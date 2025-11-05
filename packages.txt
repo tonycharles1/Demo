@@ -1,3 +1,0 @@
-# Streamlit Cloud packages file
-# Add system packages here if needed (usually empty for Python apps)
-
