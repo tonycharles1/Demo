@@ -73,9 +73,24 @@ def get_google_sheet():
         try:
             if hasattr(st, 'secrets') and 'credentials' in st.secrets:
                 creds_dict = dict(st.secrets.credentials)
+                
+                # Fix private key format - ensure newlines are preserved
+                if 'private_key' in creds_dict:
+                    private_key = creds_dict['private_key']
+                    # Replace literal \n with actual newlines if needed
+                    if '\\n' in private_key and '\n' not in private_key:
+                        creds_dict['private_key'] = private_key.replace('\\n', '\n')
+                    # Ensure private key has proper format
+                    if not creds_dict['private_key'].startswith('-----BEGIN'):
+                        st.error("❌ Private key format is incorrect in secrets!")
+                        st.info("💡 Make sure the private_key includes the full key with BEGIN/END markers")
+                        st.stop()
+                
                 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
         except Exception as secrets_error:
-            pass  # Fall back to credentials.json
+            st.error(f"❌ Error parsing credentials from secrets: {secrets_error}")
+            st.info("💡 Check that all fields in secrets are correct, especially the private_key")
+            st.stop()
         
         # Fallback to credentials.json file (for local development)
         if creds is None:
@@ -91,8 +106,15 @@ def get_google_sheet():
         spreadsheet = client.open_by_key(SPREADSHEET_ID)
         return spreadsheet
     except Exception as e:
-        st.error(f"Error connecting to Google Sheets: {e}")
-        st.info("💡 Make sure you've added secrets in Streamlit Cloud Settings")
+        error_msg = str(e)
+        st.error(f"❌ Error connecting to Google Sheets: {error_msg}")
+        
+        if "Invalid JWT Signature" in error_msg or "invalid_grant" in error_msg:
+            st.warning("⚠️ This usually means the private_key in secrets is not formatted correctly.")
+            st.info("💡 Make sure the private_key includes `\\n` characters for newlines")
+            st.info("💡 Example: `private_key = \"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n\"`")
+        else:
+            st.info("💡 Make sure you've added secrets in Streamlit Cloud Settings")
         st.stop()
 
 @st.cache_resource
