@@ -76,20 +76,52 @@ def get_google_sheet():
                 
                 # Fix private key format - ensure newlines are preserved
                 if 'private_key' in creds_dict:
-                    private_key = creds_dict['private_key']
-                    # Replace literal \n with actual newlines if needed
-                    if '\\n' in private_key and '\n' not in private_key:
-                        creds_dict['private_key'] = private_key.replace('\\n', '\n')
+                    private_key = str(creds_dict['private_key'])
+                    
+                    # Remove any leading/trailing whitespace
+                    private_key = private_key.strip()
+                    
+                    # Handle different formats of newline representation
+                    # TOML might store \n as actual newlines or as literal \n
+                    if '\\n' in private_key:
+                        # Replace literal \n with actual newlines
+                        private_key = private_key.replace('\\n', '\n')
+                    elif '\r\n' in private_key:
+                        # Handle Windows line endings
+                        private_key = private_key.replace('\r\n', '\n')
+                    
                     # Ensure private key has proper format
-                    if not creds_dict['private_key'].startswith('-----BEGIN'):
+                    if not private_key.startswith('-----BEGIN'):
                         st.error("❌ Private key format is incorrect in secrets!")
                         st.info("💡 Make sure the private_key includes the full key with BEGIN/END markers")
+                        st.info(f"💡 Private key starts with: {private_key[:50]}...")
                         st.stop()
+                    
+                    # Ensure it ends properly
+                    if not private_key.endswith('-----END PRIVATE KEY-----'):
+                        # Try to fix if it ends with \n or other characters
+                        private_key = private_key.rstrip() + '\n'
+                    
+                    creds_dict['private_key'] = private_key
                 
                 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
         except Exception as secrets_error:
-            st.error(f"❌ Error parsing credentials from secrets: {secrets_error}")
-            st.info("💡 Check that all fields in secrets are correct, especially the private_key")
+            error_str = str(secrets_error)
+            st.error(f"❌ Error parsing credentials from secrets: {error_str}")
+            
+            # Provide specific guidance based on error type
+            if "Incorrect padding" in error_str or "padding" in error_str.lower():
+                st.warning("⚠️ 'Incorrect padding' usually means the private_key format is wrong.")
+                st.info("💡 **Fix:** The private_key must have `\\n` characters (literal backslash-n), not actual line breaks.")
+                st.info("💡 **Solution:** Copy the entire block from `SECRETS_TO_PASTE.txt` and paste it as-is.")
+                st.info("💡 Make sure the private_key line is all on ONE line with `\\n` characters in it.")
+            elif "Invalid JWT Signature" in error_str or "invalid_grant" in error_str:
+                st.warning("⚠️ This usually means the private_key in secrets is not formatted correctly.")
+                st.info("💡 Make sure the private_key includes `\\n` characters for newlines")
+            else:
+                st.info("💡 Check that all fields in secrets are correct, especially the private_key")
+            
+            st.info("📋 **Quick fix:** Delete all secrets, then copy-paste the entire content from `SECRETS_TO_PASTE.txt`")
             st.stop()
         
         # Fallback to credentials.json file (for local development)

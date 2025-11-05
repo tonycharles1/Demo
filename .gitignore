@@ -28,6 +28,7 @@ credentials.json
 
 # Streamlit Secrets (IMPORTANT - Never commit this!)
 .streamlit/secrets.toml
+secrets.toml
 
 # Flask (not used anymore, but keeping for reference)
 instance/
