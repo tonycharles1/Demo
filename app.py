@@ -267,13 +267,25 @@ def show_dashboard():
 # Initialize sheet on first run (only if not already initialized)
 if 'sheet_initialized' not in st.session_state:
     try:
-        init_sheet()
-        st.session_state.sheet_initialized = True
-    except Exception as e:
-        # Don't show error on first load if secrets aren't set yet
+        # Check if secrets are available
         if hasattr(st, 'secrets') and 'credentials' in st.secrets:
-            st.warning(f"Could not initialize Google Sheet: {e}")
+            init_sheet()
+            st.session_state.sheet_initialized = True
+        else:
+            # Secrets not set yet - show message but don't crash
+            st.session_state.sheet_initialized = False
+    except Exception as e:
+        # Show error if secrets are set but connection fails
+        if hasattr(st, 'secrets') and 'credentials' in st.secrets:
+            st.error(f"❌ Error connecting to Google Sheets: {e}")
+            st.info("💡 Check that your Google Sheet is shared with the service account email")
         st.session_state.sheet_initialized = False
+
+# Show setup message if secrets not configured
+if hasattr(st, 'secrets') and 'credentials' not in st.secrets:
+    st.warning("⚠️ Streamlit Secrets not configured. Please add credentials in Settings → Secrets")
+    st.info("See HOW_TO_ADD_SECRETS.md for instructions")
+    st.stop()
 
 # Main app logic
 if st.session_state.user:
