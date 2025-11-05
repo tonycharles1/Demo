@@ -68,16 +68,22 @@ if 'page' not in st.session_state:
 def get_google_sheet():
     """Initialize and return Google Sheet client"""
     try:
+        creds = None
         # Try to get credentials from Streamlit secrets (for Streamlit Cloud)
-        if 'credentials' in st.secrets:
-            creds_dict = dict(st.secrets.credentials)
-            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
-        else:
-            # Fallback to credentials.json file (for local development)
+        try:
+            if hasattr(st, 'secrets') and 'credentials' in st.secrets:
+                creds_dict = dict(st.secrets.credentials)
+                creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
+        except Exception as secrets_error:
+            pass  # Fall back to credentials.json
+        
+        # Fallback to credentials.json file (for local development)
+        if creds is None:
             import os
             creds_file = 'credentials.json'
             if not os.path.exists(creds_file):
-                st.error("❌ Credentials not found! Please set up Streamlit Secrets or add credentials.json file.")
+                st.error("❌ Credentials not found! Please set up Streamlit Secrets in Settings or add credentials.json file.")
+                st.info("💡 Go to Streamlit Cloud → Settings → Secrets → Edit secrets")
                 st.stop()
             creds = Credentials.from_service_account_file(creds_file, scopes=SCOPE)
         
@@ -86,6 +92,7 @@ def get_google_sheet():
         return spreadsheet
     except Exception as e:
         st.error(f"Error connecting to Google Sheets: {e}")
+        st.info("💡 Make sure you've added secrets in Streamlit Cloud Settings")
         st.stop()
 
 @st.cache_resource
@@ -257,11 +264,16 @@ def show_dashboard():
         st.session_state.page = 'login'
         st.rerun()
 
-# Initialize sheet on first run
-try:
-    init_sheet()
-except Exception as e:
-    st.warning(f"Could not initialize Google Sheet: {e}")
+# Initialize sheet on first run (only if not already initialized)
+if 'sheet_initialized' not in st.session_state:
+    try:
+        init_sheet()
+        st.session_state.sheet_initialized = True
+    except Exception as e:
+        # Don't show error on first load if secrets aren't set yet
+        if hasattr(st, 'secrets') and 'credentials' in st.secrets:
+            st.warning(f"Could not initialize Google Sheet: {e}")
+        st.session_state.sheet_initialized = False
 
 # Main app logic
 if st.session_state.user:
