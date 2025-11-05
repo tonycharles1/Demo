@@ -81,26 +81,50 @@ def get_google_sheet():
                     # Remove any leading/trailing whitespace
                     private_key = private_key.strip()
                     
+                    # Diagnostic: Check key length
+                    original_length = len(private_key)
+                    
                     # Handle different formats of newline representation
                     # TOML might store \n as actual newlines or as literal \n
-                    if '\\n' in private_key:
+                    if '\\n' in private_key and '\n' not in private_key:
                         # Replace literal \n with actual newlines
                         private_key = private_key.replace('\\n', '\n')
                     elif '\r\n' in private_key:
                         # Handle Windows line endings
                         private_key = private_key.replace('\r\n', '\n')
+                    elif not '\n' in private_key and 'BEGIN PRIVATE KEY' in private_key:
+                        # If no newlines at all but has BEGIN marker, try to add them
+                        # This handles the case where \n was interpreted as actual newlines
+                        # but we need to add newlines after each line
+                        lines = private_key.split('-----BEGIN PRIVATE KEY-----')
+                        if len(lines) > 1:
+                            key_part = lines[1].split('-----END PRIVATE KEY-----')[0]
+                            # Try to reconstruct with proper newlines
+                            private_key = '-----BEGIN PRIVATE KEY-----\n' + key_part.replace(' ', '\n') + '\n-----END PRIVATE KEY-----'
                     
                     # Ensure private key has proper format
                     if not private_key.startswith('-----BEGIN'):
                         st.error("❌ Private key format is incorrect in secrets!")
                         st.info("💡 Make sure the private_key includes the full key with BEGIN/END markers")
                         st.info(f"💡 Private key starts with: {private_key[:50]}...")
+                        st.info(f"💡 Private key length: {original_length} characters")
                         st.stop()
                     
                     # Ensure it ends properly
                     if not private_key.endswith('-----END PRIVATE KEY-----'):
                         # Try to fix if it ends with \n or other characters
-                        private_key = private_key.rstrip() + '\n'
+                        if private_key.endswith('-----END PRIVATE KEY-----\\n'):
+                            private_key = private_key.replace('-----END PRIVATE KEY-----\\n', '-----END PRIVATE KEY-----\n')
+                        elif not private_key.endswith('\n'):
+                            private_key = private_key.rstrip() + '\n'
+                    
+                    # Validate the key structure
+                    if '-----BEGIN PRIVATE KEY-----' not in private_key or '-----END PRIVATE KEY-----' not in private_key:
+                        st.error("❌ Private key is missing BEGIN or END markers!")
+                        st.info(f"💡 Key length: {len(private_key)} characters")
+                        st.info(f"💡 First 100 chars: {private_key[:100]}")
+                        st.info(f"💡 Last 100 chars: {private_key[-100:]}")
+                        st.stop()
                     
                     creds_dict['private_key'] = private_key
                 
@@ -111,10 +135,35 @@ def get_google_sheet():
             
             # Provide specific guidance based on error type
             if "Incorrect padding" in error_str or "padding" in error_str.lower():
-                st.warning("⚠️ 'Incorrect padding' usually means the private_key format is wrong.")
-                st.info("💡 **Fix:** The private_key must have `\\n` characters (literal backslash-n), not actual line breaks.")
-                st.info("💡 **Solution:** Copy the entire block from `SECRETS_TO_PASTE.txt` and paste it as-is.")
-                st.info("💡 Make sure the private_key line is all on ONE line with `\\n` characters in it.")
+                st.warning("⚠️ 'Incorrect padding' error detected!")
+                st.error("This usually means the private_key is corrupted or incomplete.")
+                
+                # Try to get diagnostic info
+                try:
+                    if hasattr(st, 'secrets') and 'credentials' in st.secrets:
+                        creds_dict = dict(st.secrets.credentials)
+                        if 'private_key' in creds_dict:
+                            pk = str(creds_dict['private_key'])
+                            st.info(f"📏 Private key length: {len(pk)} characters")
+                            st.info(f"📝 First 80 chars: `{pk[:80]}`")
+                            st.info(f"📝 Last 80 chars: `{pk[-80:]}`")
+                            if 'BEGIN' not in pk:
+                                st.error("❌ Missing 'BEGIN' marker - key is corrupted!")
+                            if 'END' not in pk:
+                                st.error("❌ Missing 'END' marker - key is truncated!")
+                except:
+                    pass
+                
+                st.info("💡 **SOLUTION:**")
+                st.info("1. Go to Streamlit Cloud → Settings → Secrets → Edit secrets")
+                st.info("2. **DELETE everything** in the editor")
+                st.info("3. Open `SECRETS_TO_PASTE.txt` in your project folder")
+                st.info("4. Copy the **ENTIRE** file (Ctrl+A, Ctrl+C)")
+                st.info("5. Paste into Streamlit secrets editor (Ctrl+V)")
+                st.info("6. **VERIFY** the `private_key` line is all on ONE line (very long!)")
+                st.info("7. Make sure it starts with `-----BEGIN PRIVATE KEY-----\n`")
+                st.info("8. Make sure it ends with `-----END PRIVATE KEY-----\n\"`")
+                st.info("9. Click Save")
             elif "Invalid JWT Signature" in error_str or "invalid_grant" in error_str:
                 st.warning("⚠️ This usually means the private_key in secrets is not formatted correctly.")
                 st.info("💡 Make sure the private_key includes `\\n` characters for newlines")
